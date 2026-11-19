@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b3d91">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Planner">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<title>Railcar Load Planner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@500;600&family=Barlow+Condensed:wght@600;700&display=swap">
+<style>
+/* Layout: blue header band, tank and crew inputs, one recommendation card, load list, then the plan timeline */
+:root{
+  --bg:#f3f7fc;--card:#ffffff;--ink:#0b1f3a;--mute:#566a84;--line:#d2deed;
+  --head:#0b3d91;--acc:#1456c8;--accink:#ffffff;--hl:#e8f1fd;
+  --ok:#0f7a3d;--okbg:#e4f5ea;--warn:#8a5200;--warnbg:#fff3dd;--bad:#b3261e;--badbg:#fdeceb;
+  --display:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --body:"Barlow",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0a1424;--card:#111f36;--ink:#e8f0fb;--mute:#9fb2cc;--line:#243652;
+  --head:#0a2a63;--acc:#5aa2ff;--accink:#04152e;--hl:#162a4a;
+  --ok:#6fd49a;--okbg:#10301f;--warn:#f0b35a;--warnbg:#3a2a0e;--bad:#ff8f87;--badbg:#3a1614;color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0a1424;--card:#111f36;--ink:#e8f0fb;--mute:#9fb2cc;--line:#243652;
+  --head:#0a2a63;--acc:#5aa2ff;--accink:#04152e;--hl:#162a4a;
+  --ok:#6fd49a;--okbg:#10301f;--warn:#f0b35a;--warnbg:#3a2a0e;--bad:#ff8f87;--badbg:#3a1614;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.4 var(--body);font-variant-numeric:tabular-nums}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--head);z-index:10}
+.top{background:var(--head);color:#fff;padding-block:22px 18px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:600px;margin:0 auto}
+.top h1{margin:0;font:700 36px/1 var(--display);letter-spacing:.01em}
+.top p{margin:6px 0 0;color:#bcd6f5;font-size:16px}
+.stripe{height:6px;background:linear-gradient(90deg,#1456c8,#6fb1ff 60%,#d6e9ff)}
+main{padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h2{font:700 24px/1.1 var(--display);letter-spacing:.01em;margin:26px 0 10px}
+label.f{display:block;font-weight:600;font-size:15px;color:var(--mute);margin:0 0 6px}
+input,select,textarea{font:600 18px/1.3 var(--body);color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 12px;width:100%;min-width:0}
+input:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+button{font:inherit;font-weight:600;color:var(--ink);background:var(--card);border:2px solid var(--line);border-radius:12px;min-height:48px;padding:8px 14px;cursor:pointer}
+button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:var(--accink);font-weight:700}
+.note{font-size:13px;color:var(--mute);margin:8px 0 0}
+.ex{background:var(--warnbg);color:var(--warn);border:1px solid var(--warn);border-radius:12px;padding:10px 12px;font-size:15px;font-weight:600;margin-bottom:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:380px){.grid2{grid-template-columns:1fr}}
+.lvl{font:700 56px/1 var(--display);padding:6px 14px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chips button{min-width:52px}
+.pill{display:inline-block;font-weight:700;font-size:14px;border-radius:999px;padding:3px 10px;margin-top:8px}
+.pill.ok{background:var(--okbg);color:var(--ok)}.pill.warn{background:var(--warnbg);color:var(--warn)}.pill.bad{background:var(--badbg);color:var(--bad)}
+.rec{border:2px solid var(--line);background:var(--card);border-radius:14px;padding:16px;margin-top:18px}
+.rec.ok{border-color:var(--ok);background:var(--okbg)}.rec.warn{border-color:var(--warn);background:var(--warnbg)}.rec.bad{border-color:var(--bad);background:var(--badbg)}
+.rec h3{margin:0;font:700 30px/1.1 var(--display);letter-spacing:.01em}
+.rec.ok h3{color:var(--ok)}.rec.warn h3{color:var(--warn)}.rec.bad h3{color:var(--bad)}
+.rec p{margin:8px 0 0}
+.rec .small{font-size:14px;color:var(--mute)}
+.lrow{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+.lrow .nm{grid-column:1/-1}
+.lrow button{min-height:48px;padding:8px 12px}
+.add{width:100%;border-style:dashed;border-color:var(--acc);background:var(--hl)}
+.plan{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.plan button{flex:1 1 30%;min-height:44px;padding:6px 8px;font-size:15px}
+.step{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.step.late{border:2px solid var(--bad)}
+.step.rail{border-color:var(--acc);background:var(--hl)}
+.step .t{font-weight:700;font-size:18px}
+.step .tm{font:700 26px/1.1 var(--display);margin-top:2px}
+.step .meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:14px;color:var(--mute);margin-top:4px}
+details{margin-top:24px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:10px 14px}
+summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:center}
+.sg{display:grid;grid-template-columns:1fr 110px;gap:8px 12px;align-items:center;margin-top:8px}
+.sg input{font-size:17px;padding:8px}
+[hidden]{display:none!important}
+:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap"><h1>Railcar Load Planner</h1><p>Tarquin Coolpro lead tool</p></div></header>
+<div class="stripe"></div>
+<main><div class="wrap">
+  <div id="exbanner" class="ex" hidden>Example numbers. Replace them with tonight's tank level and loads.</div>
+
+  <h2 style="margin-top:6px">Right now</h2>
+  <div class="grid2">
+    <div>
+      <label class="f" for="lvl">Tank level (sonar %)</label>
+      <input id="lvl" class="lvl" type="number" inputmode="decimal" min="0" max="100" step="any">
+      <div id="lvlpill"></div>
+    </div>
+    <div>
+      <label class="f">Loaders available now</label>
+      <div class="chips" id="ldr"></div>
+      <p class="note" id="clock"></p>
+    </div>
+  </div>
+
+  <div id="rec" class="rec" role="status" aria-live="polite"></div>
+
+  <h2>Loads waiting</h2>
+  <div id="loads"></div>
+  <button id="add" class="add" type="button">Add a load</button>
+  <p class="note">Enter each load's leave-by time (LBT) and gallons. A time that already passed by more than an hour is read as tomorrow.</p>
+
+  <h2>Plan</h2>
+  <div class="plan" id="planbtn"></div>
+  <div id="sched"></div>
+
+  <details>
+    <summary>Settings and assumptions</summary>
+    <div class="sg" id="sg"></div>
+    <p class="note" id="derived"></p>
+    <p class="note">Railcar gallons start at a typical 19,700. For a car that differs, type its gallons from the railcar sheet. The unload time is gallons divided by the GPM. The tank size is worked out from how much a 5,000 gal load drops the sonar, so change that number if you see a different drop.</p>
+  </details>
+  <p class="note">This tool suggests an order. It assumes every available loader is free right now. While a railcar unloads, a loader is only tied up for rig up and rig down. You make the call.</p>
+</div></main>
+
+<script>
+var KEY="tcw-planner-v1";
+var DEF={drop:9.5,railGal:19700,gpm:75,up:25,down:25,loadMin:90,stop:20,due:50,fill:90};
+var SET=[["drop","Sonar % per 5,000 gal load",.1],["railGal","Gallons in this railcar",100],["gpm","Unload rate (GPM)",1],["up","Rig up time (min)",5],["down","Rig down time (min)",5],["loadMin","Time per load (min)",5],["stop","Stop loading at (%)",1],["due","Run a railcar below (%)",1],["fill","Do not fill above (%)",1]];
+var NOW=Math.floor(Date.now()/60000)*60000;
+function pad(n){return (n<10?"0":"")+n}
+function hhmm(off){var d=new Date(NOW+off*60000);return pad(d.getHours())+":"+pad(d.getMinutes())}
+function T(m){return new Date(NOW+m*60000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}
+function dur(m){m=Math.round(m);var h=Math.floor(m/60);return h+":"+pad(m%60)}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+var S=null;
+try{var raw=localStorage.getItem(KEY);if(raw){S=JSON.parse(raw)}}catch(e){}
+if(!S||!S.loads){S={level:42,loaders:2,plan:"rec",examples:true,next:4,P:Object.assign({},DEF),
+  loads:[{id:1,name:"Example load 1",lbt:hhmm(150),gal:5000},{id:2,name:"Example load 2",lbt:hhmm(240),gal:5000},{id:3,name:"Example load 3",lbt:hhmm(330),gal:5000}]}}
+S.P=Object.assign({},DEF,S.P||{});
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var $=function(i){return document.getElementById(i)};
+
+function derive(){var P=S.P;var tank=5000/(P.drop/100);var un=Math.round(P.railGal/P.gpm);return{tank:tank,add:P.railGal/tank*100,unload:un,U:un+P.up+P.down}}
+function lbtMin(s){if(!s||s.indexOf(":")<0)return null;var p=s.split(":"),d=new Date(NOW);var t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),+p[0],+p[1]).getTime();var df=(t-NOW)/60000;if(df<-60)df+=1440;return df}
+
+function sim(level0,N,loads,rs,P,D){
+  var free=[],i;for(i=0;i<N;i++)free.push(0);
+  var q=loads.slice().sort(function(a,b){return a.lbt-b.lbt});
+  var level=level0,res=[],rail={started:false,start:null,uStart:null,uEnd:null,end:null,downDone:false},minL=level0,maxL=level0;
+  for(var t=0;t<=2880;t++){
+    if(rs!=null&&!rail.started&&t>=rs){for(i=0;i<N;i++){if(free[i]<=t){rail.started=true;rail.start=t;rail.uStart=t+P.up;rail.uEnd=t+P.up+D.unload;rail.end=rail.uEnd+P.down;free[i]=t+P.up;break}}}
+    if(rail.started&&t>rail.uStart&&t<=rail.uEnd)level+=D.add/D.unload;
+    if(rail.started&&!rail.downDone&&t>=rail.uEnd){for(i=0;i<N;i++){if(free[i]<=t){free[i]=t+P.down;rail.end=t+P.down;rail.downDone=true;break}}}
+    for(i=0;i<N&&q.length;i++){
+      if(free[i]<=t){var L=q[0],drop=P.drop*L.gal/5000;
+        if(level-drop>=P.stop){q.shift();level-=drop;res.push({id:L.id,name:L.name,lbt:L.lbt,gal:L.gal,start:t,end:t+P.loadMin,after:level,late:(t+P.loadMin)-L.lbt});free[i]=t+P.loadMin}
+        else break}
+    }
+    if(level<minL)minL=level;if(level>maxL)maxL=level;
+    if(!q.length&&(rs==null||(rail.started&&rail.downDone)))break;
+  }
+  return{res:res,rail:rail,blocked:q,minL:minL,maxL:maxL,over:maxL>P.fill+0.01}
+}
+function problems(r){var o=[];r.res.forEach(function(x){if(x.late>0)o.push(x.name)});r.blocked.forEach(function(x){o.push(x.name)});return o}
+function score(r){return problems(r).length+(r.over?1:0)}
+function list(a){return a.join(", ")}
+
+function render(){
+  NOW=Math.floor(Date.now()/60000)*60000;
+  var P=S.P,D=derive(),lvl=parseFloat(S.level);if(isNaN(lvl))lvl=0;
+  $("exbanner").hidden=!S.examples;
+  $("clock").textContent="Time now: "+T(0);
+  var lp=$("lvlpill");
+  if(lvl<=P.stop)lp.innerHTML='<span class="pill bad">At or below stop level</span>';
+  else if(lvl<P.due)lp.innerHTML='<span class="pill warn">Below '+P.due+'%, railcar due</span>';
+  else lp.innerHTML='<span class="pill ok">Above '+P.due+'%</span>';
+  $("derived").textContent="Tank is about "+Math.round(D.tank).toLocaleString("en-US")+" gal at 100%. This railcar unloads in about "+dur(D.unload)+", plus rig up and rig down, and adds about "+Math.round(D.add)+"% to the sonar.";
+
+  var arr=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal);if(m!=null&&g>0)arr.push({id:l.id,name:l.name||("Load "+(i+1)),lbt:m,gal:g})});
+  var N=S.loaders;
+  var run=function(rs){return sim(lvl,N,arr,rs,P,D)};
+  var base=run(null),bs=score(base),oks=[],best={rs:null,sc:bs,r:base};
+  for(var rs=0;rs<=600;rs+=5){var r=run(rs);if(!r.rail.started)continue;var sc=score(r),ast=r.rail.start;if(sc===0&&oks.indexOf(ast)<0)oks.push(ast);if(sc<best.sc)best={rs:ast,sc:sc,r:r}}
+  var now0=run(0),low=lvl<P.due,h="",tone="",L=[];
+
+  if(N<1){h="No loaders available";tone="bad";L.push("Set at least one loader to plan anything.")}
+  else if(!arr.length){
+    if(low){h="Run a railcar now";tone="warn";L.push("No loads are waiting and the tank is at "+Math.round(lvl)+"%. One loader rigs it up and down.")}
+    else{h="Tank is above "+P.due+"%";tone="ok";L.push("No loads waiting. Run a railcar when the sonar drops below "+P.due+"%.")}
+  }else if(oks.length){
+    var f=oks[0],la=oks[oks.length-1];
+    if(low){
+      if(f===0){h="Start the railcar now";tone="ok";L.push("One loader rigs it up (about "+P.up+" min), then goes back to loading while it unloads, and rigs it down (about "+P.down+" min) when it finishes. Every load still makes its LBT.");}
+      else{h="Start the railcar at "+T(f);tone="warn";L.push("Starting right now would put "+list(problems(now0).length?problems(now0):["a load"])+" past LBT or overfill the tank.");L.push("Latest start that still works: "+T(la)+".")}
+    }else{h="Railcar not needed yet";tone="ok";L.push("Tank is at "+Math.round(lvl)+"%. If you want to run one early, "+(la>=600?"start any time in the next 10 hours and no load goes late.":"start between "+T(f)+" and "+T(la)+" and no load goes late."))}
+  }else{
+    if(bs===0){
+      h=low?"Loads first, then the railcar":"Railcar not needed yet";tone=low?"warn":"ok";
+      var pn=problems(now0);
+      L.push("Running a railcar now would "+(pn.length?"put "+list(pn)+" past LBT":"overfill the tank")+(now0.over&&pn.length?" and overfill the tank":"")+".");
+      var me=0;base.res.forEach(function(x){if(x.end>me)me=x.end});
+      L.push("Start it after the loads are on their way, around "+T(me)+".");
+    }else{
+      h="Loads are tight";tone="bad";
+      var pb=problems(base);
+      if(base.blocked.length)L.push(list(base.blocked.map(function(x){return x.name}))+" can't start. The tank would drop to "+P.stop+"% first, so a railcar is needed.");
+      var lt=base.res.filter(function(x){return x.late>0}).map(function(x){return x.name});
+      if(lt.length)L.push("With "+N+" loader"+(N>1?"s":"")+" and no railcar, "+list(lt)+" would leave late.");
+      if(best.rs!=null)L.push("Least bad option: start the railcar at "+T(best.rs)+". It still leaves "+best.sc+" problem"+(best.sc>1?"s":"")+": "+list(problems(best.r))+(best.r.over?(problems(best.r).length?", ":"")+"tank over "+P.fill+"%":"")+".");
+      else L.push("Every loader is needed on loads. Consider getting help before the railcar.");
+    }
+  }
+  var plan=S.plan,chosen=null,cr;
+  if(plan==="now")chosen=0;else if(plan==="none")chosen=null;
+  else{if(oks.length&&low)chosen=oks[0];else if(bs>0&&best.rs!=null)chosen=best.rs;else chosen=null}
+  cr=run(chosen);
+  L.push('<span class="small">Estimated lowest tank level on this plan: '+Math.round(cr.minL)+'%. Loading stops at '+P.stop+'%.</span>');
+  var rc=$("rec");rc.className="rec "+tone;rc.innerHTML="<h3>"+esc(h)+"</h3>"+L.map(function(x){return "<p>"+(x.indexOf("<span")===0?x:esc(x))+"</p>"}).join("");
+
+  var pb2=[["rec","Recommended"],["now","Railcar now"],["none","Loads only"]];
+  $("planbtn").innerHTML=pb2.map(function(x){return '<button type="button" data-p="'+x[0]+'" aria-pressed="'+(plan===x[0])+'">'+x[1]+'</button>'}).join("");
+
+  var rows=[];
+  if(cr.rail.started)rows.push({k:"rail",s:cr.rail.start});
+  cr.res.forEach(function(x){rows.push({k:"load",s:x.start,x:x})});
+  rows.sort(function(a,b){return a.s-b.s});
+  var html=rows.map(function(o){
+    if(o.k==="rail")return '<div class="step rail"><div class="t">Railcar: rig up</div><div class="tm">'+T(cr.rail.start)+' to '+T(cr.rail.uStart)+'</div><div class="meta"><span>One loader</span><span>Unloads until '+T(cr.rail.uEnd)+', tank rises about '+Math.round(D.add)+'%</span><span>Rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+'</span><span>Moving the car needs two loaders</span></div></div>';
+    var x=o.x,late=x.late>0;
+    return '<div class="step'+(late?" late":"")+'"><div class="t">'+esc(x.name)+'</div><div class="tm">'+T(x.start)+' to '+T(x.end)+'</div><div class="meta"><span>LBT '+T(x.lbt)+'</span><span>'+(late?'<b style="color:var(--bad)">Late by '+Math.round(x.late)+' min</b>':Math.round(-x.late)+' min to spare')+'</span><span>Tank '+Math.round(x.after)+'% after start</span></div></div>'
+  }).join("");
+  cr.blocked.forEach(function(x){html+='<div class="step late"><div class="t">'+esc(x.name)+'</div><div class="meta"><span><b style="color:var(--bad)">Cannot start. Tank would drop below '+P.stop+'%.</b></span><span>LBT '+T(x.lbt)+'</span></div></div>'});
+  $("sched").innerHTML=html||'<p class="note">Add a load to see the plan.</p>';
+}
+
+function buildLoads(){
+  $("loads").innerHTML=S.loads.map(function(l){return '<div class="lrow" data-id="'+l.id+'"><div class="nm"><label class="f" for="nm'+l.id+'">Load or trailer</label><input id="nm'+l.id+'" data-f="name" type="text" value="'+esc(l.name||"")+'" placeholder="Name or number"></div>'+
+   '<div><label class="f" for="tm'+l.id+'">Leave by (LBT)</label><input id="tm'+l.id+'" data-f="lbt" type="time" value="'+esc(l.lbt||"")+'"></div>'+
+   '<div><label class="f" for="gl'+l.id+'">Gallons</label><input id="gl'+l.id+'" data-f="gal" type="number" inputmode="decimal" min="0" step="any" value="'+esc(l.gal)+'"></div>'+
+   '<button type="button" data-rm="'+l.id+'" aria-label="Remove load">Remove</button></div>'}).join("")||'<p class="note">No loads yet. Tap Add a load.</p>';
+}
+function touch(){S.examples=false;save()}
+$("loads").oninput=function(e){var row=e.target.closest(".lrow");if(!row)return;var id=+row.getAttribute("data-id"),f=e.target.getAttribute("data-f");var l=S.loads.filter(function(x){return x.id===id})[0];if(l&&f){l[f]=e.target.value;touch();render()}};
+$("loads").onclick=function(e){var r=e.target.getAttribute("data-rm");if(r){S.loads=S.loads.filter(function(x){return x.id!==+r});touch();buildLoads();render()}};
+$("add").onclick=function(){var n=S.next++;S.loads.push({id:n,name:"",lbt:"",gal:5000});touch();buildLoads();render();var el=$("nm"+n);if(el)el.focus()};
+$("lvl").value=S.level;
+$("lvl").oninput=function(e){S.level=e.target.value;touch();render()};
+function buildLdr(){$("ldr").innerHTML=[1,2,3,4].map(function(n){return '<button type="button" data-n="'+n+'" aria-pressed="'+(S.loaders===n)+'">'+n+'</button>'}).join("")}
+$("ldr").onclick=function(e){var n=e.target.getAttribute("data-n");if(n){S.loaders=+n;touch();buildLdr();render()}};
+$("planbtn").onclick=function(e){var p=e.target.getAttribute("data-p");if(p){S.plan=p;save();render()}};
+$("sg").innerHTML=SET.map(function(s){return '<label for="s_'+s[0]+'">'+s[1]+'</label><input id="s_'+s[0]+'" data-k="'+s[0]+'" type="number" inputmode="decimal" step="'+s[2]+'" value="'+S.P[s[0]]+'">'}).join("");
+$("sg").oninput=function(e){var k=e.target.getAttribute("data-k"),v=parseFloat(e.target.value);if(k&&v>=0&&(v>0||k==="extra")){S.P[k]=v;touch();render()}};
+buildLdr();buildLoads();render();
+setInterval(render,60000);
+if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
+</script>
+</body>
+</html>
