@@ -103,6 +103,7 @@ summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:
   <div style="margin-top:14px">
     <label class="f">Railcar unloading right now?</label>
     <div class="chips" id="rcbtn"></div>
+    <p class="note" id="rcleft" hidden></p>
     <div id="rcin" class="grid2" style="margin-top:10px" hidden>
       <div><label class="f" for="rch">Time left on timer: hours</label><input id="rch" type="number" inputmode="numeric" min="0" max="9" step="1"></div>
       <div><label class="f" for="rcm">Minutes</label><input id="rcm" type="number" inputmode="numeric" min="0" max="59" step="1"></div>
@@ -193,7 +194,8 @@ function render(){
 
   var arr=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal);if(m!=null&&g>0)arr.push({id:l.id,name:l.name||("Load "+(i+1)),ticket:l.ticket||"",bol:l.bol||"",prod:l.prod||"acid",lbt:m,gal:g})});
   var N=S.loaders;
-  var rc=S.rc||{on:false,h:0,m:0},ex=rc.on?{rem:Math.max(0,(parseFloat(rc.h)||0)*60+(parseFloat(rc.m)||0))}:null;
+  var rc=S.rc||{on:false,h:0,m:0},ex=rc.on?{rem:Math.round(Math.max(0,rc.endAt?(rc.endAt-NOW)/60000:(parseFloat(rc.h)||0)*60+(parseFloat(rc.m)||0)))}:null;
+  var rl=$("rcleft");rl.hidden=!ex;if(ex)rl.textContent=ex.rem>0?"Counting down: "+dur(ex.rem)+" left, done at "+T(ex.rem)+".":"Timer is at zero. Unloading should be done.";
   var run=function(rs){return sim(lvl,N,arr,rs,P,D,ex)};
   var base=run(null),bs=score(base),oks=[],best={rs:null,sc:bs,r:base};
   for(var rs=0;rs<=600&&!ex;rs+=5){var r=run(rs);if(!r.rail.started)continue;var sc=score(r),ast=r.rail.start;if(sc===0&&oks.indexOf(ast)<0)oks.push(ast);if(sc<best.sc)best={rs:ast,sc:sc,r:r}}
@@ -202,8 +204,8 @@ function render(){
   if(N<1){h="No loaders available";tone="bad";L.push("Set at least one loader to plan anything.")}
   else if(ex){
     var pbx=problems(base);
-    h="Railcar already running";tone=pbx.length?"warn":"ok";
-    L.push("It finishes unloading at "+T(ex.rem)+". Send a loader to vent it and rig it down then (about "+(P.vent+P.down)+" min).");
+    h=ex.rem>0?"Railcar already running":"Railcar finished unloading";tone=pbx.length?"warn":"ok";
+    L.push(ex.rem>0?"It finishes unloading at "+T(ex.rem)+". Send a loader to vent it and rig it down then (about "+(P.vent+P.down)+" min).":"Send a loader to vent it and rig it down now (about "+(P.vent+P.down)+" min).");
     if(base.rail.levelEnd!=null)L.push("The tank should be about "+Math.round(base.rail.levelEnd)+"% when it finishes."+(base.rail.levelEnd<P.due?" That is still below "+P.due+"%, so plan another railcar after this one.":""));
     if(pbx.length)L.push("With "+N+" loader"+(N>1?"s":"")+", "+list(pbx)+" would leave late or can't start.");
     else if(arr.length)L.push("Every load makes its LBT.");
@@ -281,10 +283,11 @@ $("planbtn").onclick=function(e){var p=e.target.getAttribute("data-p");if(p){S.p
 $("sg").innerHTML=SET.map(function(s){return '<label for="s_'+s[0]+'">'+s[1]+'</label><input id="s_'+s[0]+'" data-k="'+s[0]+'" type="number" inputmode="decimal" step="'+s[2]+'" value="'+S.P[s[0]]+'">'}).join("");
 $("sg").oninput=function(e){var k=e.target.getAttribute("data-k"),v=parseFloat(e.target.value);if(k&&v>=0&&(v>0||k==="extra")){S.P[k]=v;touch();render()}};
 function buildRc(){$("rcbtn").innerHTML=[[false,"No"],[true,"Yes, one is running"]].map(function(x){return '<button type="button" data-r="'+x[0]+'" aria-pressed="'+(S.rc.on===x[0])+'">'+x[1]+'</button>'}).join("");$("rcin").hidden=!S.rc.on}
-$("rcbtn").onclick=function(e){var r=e.target.getAttribute("data-r");if(r!==null){S.rc.on=(r==="true");touch();buildRc();render()}};
+function setEnd(){S.rc.endAt=Date.now()+((parseFloat(S.rc.h)||0)*60+(parseFloat(S.rc.m)||0))*60000}
+$("rcbtn").onclick=function(e){var r=e.target.getAttribute("data-r");if(r!==null){S.rc.on=(r==="true");if(S.rc.on)setEnd();touch();buildRc();render()}};
 $("rch").value=S.rc.h;$("rcm").value=S.rc.m;
-$("rch").oninput=function(e){S.rc.h=e.target.value;touch();render()};
-$("rcm").oninput=function(e){S.rc.m=e.target.value;touch();render()};
+$("rch").oninput=function(e){S.rc.h=e.target.value;setEnd();touch();render()};
+$("rcm").oninput=function(e){S.rc.m=e.target.value;setEnd();touch();render()};
 buildRc();buildLdr();buildLoads();render();
 setInterval(render,60000);
 if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
