@@ -100,13 +100,21 @@ summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:
       <p class="note" id="clock"></p>
     </div>
   </div>
+  <div style="margin-top:14px">
+    <label class="f">Railcar unloading right now?</label>
+    <div class="chips" id="rcbtn"></div>
+    <div id="rcin" class="grid2" style="margin-top:10px" hidden>
+      <div><label class="f" for="rch">Time left on timer: hours</label><input id="rch" type="number" inputmode="numeric" min="0" max="9" step="1"></div>
+      <div><label class="f" for="rcm">Minutes</label><input id="rcm" type="number" inputmode="numeric" min="0" max="59" step="1"></div>
+    </div>
+  </div>
 
   <div id="rec" class="rec" role="status" aria-live="polite"></div>
 
   <h2>Loads waiting</h2>
   <div id="loads"></div>
   <button id="add" class="add" type="button">Add a load</button>
-  <p class="note">Enter each load's leave-by time (LBT) and gallons. A time that already passed by more than an hour is read as tomorrow.</p>
+  <p class="note">Enter each load's product, leave-by time (LBT) and gallons. Diluted acid and CableShield loads take less 36% acid from the tank, so they drop the sonar less. A time that already passed by more than an hour is read as tomorrow.</p>
 
   <h2>Plan</h2>
   <div class="plan" id="planbtn"></div>
@@ -116,44 +124,51 @@ summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:
     <summary>Settings and assumptions</summary>
     <div class="sg" id="sg"></div>
     <p class="note" id="derived"></p>
-    <p class="note">Railcar gallons start at a typical 19,700. For a car that differs, type its gallons from the railcar sheet. The unload time is gallons divided by the GPM. The tank size is worked out from how much a 5,000 gal load drops the sonar, so change that number if you see a different drop.</p>
+    <p class="note">Railcar gallons start at a typical 19,700. For a car that differs, type its gallons from the railcar sheet. The unload time is gallons divided by the GPM. The tank size is worked out from how much a 5,000 gal load of 36% acid drops the sonar, so change that number if you see a different drop. Other products draw less in proportion to the 36% acid in them.</p>
   </details>
-  <p class="note">This tool suggests an order. It assumes every available loader is free right now. While a railcar unloads, a loader is only tied up for rig up and rig down. You make the call.</p>
+  <p class="note">This tool suggests an order. It assumes every available loader is free right now. While a railcar unloads, a loader is only tied up for rig up, then for venting and rig down when it finishes. You make the call.</p>
 </div></main>
 
 <script>
 var KEY="tcw-planner-v1";
-var DEF={drop:9.5,railGal:19700,gpm:75,up:25,down:25,loadMin:90,stop:20,due:50,fill:90};
-var SET=[["drop","Sonar % per 5,000 gal load",.1],["railGal","Gallons in this railcar",100],["gpm","Unload rate (GPM)",1],["up","Rig up time (min)",5],["down","Rig down time (min)",5],["loadMin","Time per load (min)",5],["stop","Stop loading at (%)",1],["due","Run a railcar below (%)",1],["fill","Do not fill above (%)",1]];
+var DEF={drop:9.5,railGal:19700,gpm:75,up:25,down:25,vent:30,loadMin:90,stop:20,due:50,fill:90};
+var SET=[["drop","Sonar % per 5,000 gal of 36% acid",.1],["railGal","Gallons in this railcar",100],["gpm","Unload rate (GPM)",1],["up","Rig up time (min)",5],["down","Rig down time (min)",5],["vent","Vent time after unload (min)",5],["loadMin","Time per load (min)",5],["stop","Stop loading at (%)",1],["due","Run a railcar below (%)",1],["fill","Do not fill above (%)",1]];
 var NOW=Math.floor(Date.now()/60000)*60000;
 function pad(n){return (n<10?"0":"")+n}
 function hhmm(off){var d=new Date(NOW+off*60000);return pad(d.getHours())+":"+pad(d.getMinutes())}
 function T(m){return new Date(NOW+m*60000).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})}
 function dur(m){m=Math.round(m);var h=Math.floor(m/60);return h+":"+pad(m%60)}
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function tb(x){return (x.ticket?'<span>Ticket '+esc(x.ticket)+'</span>':'')+(x.bol?'<span>BOL '+esc(x.bol)+'</span>':'')}
+/* gallons of 36% acid pulled from the tank per gallon of product (Acid Dilution Chart and CableShield blend charts) */
+var PRODUCTS=[["acid","36% acid",1],["32","32% HCl",.88],["28","28% HCl",.75],["20","20% HCl",.53],["15","15% HCl",.388],["10","10% HCl",.253],["7.5","7.5% HCl",.187],["5","5% HCl",.123],["cs100","CableShield 100%",.376],["cs33","CableShield 33%",.122]];
+function pinfo(k){for(var i=0;i<PRODUCTS.length;i++)if(PRODUCTS[i][0]===k)return PRODUCTS[i];return PRODUCTS[0]}
+function tb(x){var p=pinfo(x.prod),g=Math.round(x.gal).toLocaleString("en-US"),a=Math.round(x.gal*p[2]).toLocaleString("en-US");
+  return '<span>'+g+' gal '+p[1]+'</span>'+(p[2]<1?'<span>Uses '+a+' gal of 36% acid</span>':'')+(x.ticket?'<span>Ticket '+esc(x.ticket)+'</span>':'')+(x.bol?'<span>BOL '+esc(x.bol)+'</span>':'')}
 var S=null;
 try{var raw=localStorage.getItem(KEY);if(raw){S=JSON.parse(raw)}}catch(e){}
 if(!S||!S.loads){S={level:42,loaders:2,plan:"rec",examples:true,next:4,P:Object.assign({},DEF),
-  loads:[{id:1,name:"Example load 1",lbt:hhmm(150),gal:5000},{id:2,name:"Example load 2",lbt:hhmm(240),gal:5000},{id:3,name:"Example load 3",lbt:hhmm(330),gal:5000}]}}
+  loads:[{id:1,name:"Example load 1",prod:"acid",lbt:hhmm(150),gal:5000},{id:2,name:"Example load 2",prod:"15",lbt:hhmm(240),gal:5000},{id:3,name:"Example load 3",prod:"cs33",lbt:hhmm(330),gal:5000}]}}
 S.P=Object.assign({},DEF,S.P||{});
+S.rc=S.rc||{on:false,h:0,m:0};
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
 var $=function(i){return document.getElementById(i)};
 
-function derive(){var P=S.P;var tank=5000/(P.drop/100);var un=Math.round(P.railGal/P.gpm);return{tank:tank,add:P.railGal/tank*100,unload:un,U:un+P.up+P.down}}
+function derive(){var P=S.P;var tank=5000/(P.drop/100);var un=Math.round(P.railGal/P.gpm);return{tank:tank,add:P.railGal/tank*100,unload:un,U:un+P.up+P.vent+P.down}}
 function lbtMin(s){if(!s||s.indexOf(":")<0)return null;var p=s.split(":"),d=new Date(NOW);var t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),+p[0],+p[1]).getTime();var df=(t-NOW)/60000;if(df<-60)df+=1440;return df}
 
-function sim(level0,N,loads,rs,P,D){
+function sim(level0,N,loads,rs,P,D,ex){
   var free=[],i;for(i=0;i<N;i++)free.push(0);
   var q=loads.slice().sort(function(a,b){return a.lbt-b.lbt});
-  var level=level0,res=[],rail={started:false,start:null,uStart:null,uEnd:null,end:null,downDone:false},minL=level0,maxL=level0;
+  var level=level0,res=[],rail={started:false,start:null,uStart:null,uEnd:null,end:null,downDone:false,existing:false,levelEnd:null},minL=level0,maxL=level0;
+  if(ex){rail.started=true;rail.existing=true;rail.start=0;rail.uStart=0;rail.uEnd=ex.rem;rail.end=ex.rem+P.vent+P.down}
   for(var t=0;t<=2880;t++){
-    if(rs!=null&&!rail.started&&t>=rs){for(i=0;i<N;i++){if(free[i]<=t){rail.started=true;rail.start=t;rail.uStart=t+P.up;rail.uEnd=t+P.up+D.unload;rail.end=rail.uEnd+P.down;free[i]=t+P.up;break}}}
+    if(rs!=null&&!rail.started&&t>=rs){for(i=0;i<N;i++){if(free[i]<=t){rail.started=true;rail.start=t;rail.uStart=t+P.up;rail.uEnd=t+P.up+D.unload;rail.end=rail.uEnd+P.vent+P.down;free[i]=t+P.up;break}}}
     if(rail.started&&t>rail.uStart&&t<=rail.uEnd)level+=D.add/D.unload;
-    if(rail.started&&!rail.downDone&&t>=rail.uEnd){for(i=0;i<N;i++){if(free[i]<=t){free[i]=t+P.down;rail.end=t+P.down;rail.downDone=true;break}}}
+    if(rail.started&&t===rail.uEnd)rail.levelEnd=level;
+    if(rail.started&&!rail.downDone&&t>=rail.uEnd){for(i=0;i<N;i++){if(free[i]<=t){free[i]=t+P.vent+P.down;rail.end=t+P.vent+P.down;rail.downDone=true;break}}}
     for(i=0;i<N&&q.length;i++){
-      if(free[i]<=t){var L=q[0],drop=P.drop*L.gal/5000;
-        if(level-drop>=P.stop){q.shift();level-=drop;res.push({id:L.id,name:L.name,ticket:L.ticket,bol:L.bol,lbt:L.lbt,gal:L.gal,start:t,end:t+P.loadMin,after:level,late:(t+P.loadMin)-L.lbt});free[i]=t+P.loadMin}
+      if(free[i]<=t){var L=q[0],drop=P.drop*L.gal*pinfo(L.prod)[2]/5000;
+        if(level-drop>=P.stop){q.shift();level-=drop;res.push({id:L.id,name:L.name,ticket:L.ticket,bol:L.bol,prod:L.prod,lbt:L.lbt,gal:L.gal,start:t,end:t+P.loadMin,after:level,late:(t+P.loadMin)-L.lbt});free[i]=t+P.loadMin}
         else break}
     }
     if(level<minL)minL=level;if(level>maxL)maxL=level;
@@ -176,21 +191,30 @@ function render(){
   else lp.innerHTML='<span class="pill ok">Above '+P.due+'%</span>';
   $("derived").textContent="Tank is about "+Math.round(D.tank).toLocaleString("en-US")+" gal at 100%. This railcar unloads in about "+dur(D.unload)+", plus rig up and rig down, and adds about "+Math.round(D.add)+"% to the sonar.";
 
-  var arr=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal);if(m!=null&&g>0)arr.push({id:l.id,name:l.name||("Load "+(i+1)),ticket:l.ticket||"",bol:l.bol||"",lbt:m,gal:g})});
+  var arr=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal);if(m!=null&&g>0)arr.push({id:l.id,name:l.name||("Load "+(i+1)),ticket:l.ticket||"",bol:l.bol||"",prod:l.prod||"acid",lbt:m,gal:g})});
   var N=S.loaders;
-  var run=function(rs){return sim(lvl,N,arr,rs,P,D)};
+  var rc=S.rc||{on:false,h:0,m:0},ex=rc.on?{rem:Math.max(0,(parseFloat(rc.h)||0)*60+(parseFloat(rc.m)||0))}:null;
+  var run=function(rs){return sim(lvl,N,arr,rs,P,D,ex)};
   var base=run(null),bs=score(base),oks=[],best={rs:null,sc:bs,r:base};
-  for(var rs=0;rs<=600;rs+=5){var r=run(rs);if(!r.rail.started)continue;var sc=score(r),ast=r.rail.start;if(sc===0&&oks.indexOf(ast)<0)oks.push(ast);if(sc<best.sc)best={rs:ast,sc:sc,r:r}}
+  for(var rs=0;rs<=600&&!ex;rs+=5){var r=run(rs);if(!r.rail.started)continue;var sc=score(r),ast=r.rail.start;if(sc===0&&oks.indexOf(ast)<0)oks.push(ast);if(sc<best.sc)best={rs:ast,sc:sc,r:r}}
   var now0=run(0),low=lvl<P.due,h="",tone="",L=[];
 
   if(N<1){h="No loaders available";tone="bad";L.push("Set at least one loader to plan anything.")}
+  else if(ex){
+    var pbx=problems(base);
+    h="Railcar already running";tone=pbx.length?"warn":"ok";
+    L.push("It finishes unloading at "+T(ex.rem)+". Send a loader to vent it and rig it down then (about "+(P.vent+P.down)+" min).");
+    if(base.rail.levelEnd!=null)L.push("The tank should be about "+Math.round(base.rail.levelEnd)+"% when it finishes."+(base.rail.levelEnd<P.due?" That is still below "+P.due+"%, so plan another railcar after this one.":""));
+    if(pbx.length)L.push("With "+N+" loader"+(N>1?"s":"")+", "+list(pbx)+" would leave late or can't start.");
+    else if(arr.length)L.push("Every load makes its LBT.");
+  }
   else if(!arr.length){
     if(low){h="Run a railcar now";tone="warn";L.push("No loads are waiting and the tank is at "+Math.round(lvl)+"%. One loader rigs it up and down.")}
     else{h="Tank is above "+P.due+"%";tone="ok";L.push("No loads waiting. Run a railcar when the sonar drops below "+P.due+"%.")}
   }else if(oks.length){
     var f=oks[0],la=oks[oks.length-1];
     if(low){
-      if(f===0){h="Start the railcar now";tone="ok";L.push("One loader rigs it up (about "+P.up+" min), then goes back to loading while it unloads, and rigs it down (about "+P.down+" min) when it finishes. Every load still makes its LBT.");}
+      if(f===0){h="Start the railcar now";tone="ok";L.push("One loader rigs it up (about "+P.up+" min), then goes back to loading while it unloads, and vents and rigs it down (about "+(P.vent+P.down)+" min) when it finishes. Every load still makes its LBT.");}
       else{h="Start the railcar at "+T(f);tone="warn";L.push("Starting right now would put "+list(problems(now0).length?problems(now0):["a load"])+" past LBT or overfill the tank.");L.push("Latest start that still works: "+T(la)+".")}
     }else{h="Railcar not needed yet";tone="ok";L.push("Tank is at "+Math.round(lvl)+"%. If you want to run one early, "+(la>=600?"start any time in the next 10 hours and no load goes late.":"start between "+T(f)+" and "+T(la)+" and no load goes late."))}
   }else{
@@ -213,6 +237,7 @@ function render(){
   var plan=S.plan,chosen=null,cr;
   if(plan==="now")chosen=0;else if(plan==="none")chosen=null;
   else{if(oks.length&&low)chosen=oks[0];else if(bs>0&&best.rs!=null)chosen=best.rs;else chosen=null}
+  if(ex)chosen=null;
   cr=run(chosen);
   L.push('<span class="small">Estimated lowest tank level on this plan: '+Math.round(cr.minL)+'%. Loading stops at '+P.stop+'%.</span>');
   var rc=$("rec");rc.className="rec "+tone;rc.innerHTML="<h3>"+esc(h)+"</h3>"+L.map(function(x){return "<p>"+(x.indexOf("<span")===0?x:esc(x))+"</p>"}).join("");
@@ -220,12 +245,14 @@ function render(){
   var pb2=[["rec","Recommended"],["now","Railcar now"],["none","Loads only"]];
   $("planbtn").innerHTML=pb2.map(function(x){return '<button type="button" data-p="'+x[0]+'" aria-pressed="'+(plan===x[0])+'">'+x[1]+'</button>'}).join("");
 
+  $("planbtn").hidden=!!ex;
   var rows=[];
   if(cr.rail.started)rows.push({k:"rail",s:cr.rail.start});
   cr.res.forEach(function(x){rows.push({k:"load",s:x.start,x:x})});
   rows.sort(function(a,b){return a.s-b.s});
   var html=rows.map(function(o){
-    if(o.k==="rail")return '<div class="step rail"><div class="t">Railcar: rig up</div><div class="tm">'+T(cr.rail.start)+' to '+T(cr.rail.uStart)+'</div><div class="meta"><span>One loader</span><span>Unloads until '+T(cr.rail.uEnd)+', tank rises about '+Math.round(D.add)+'%</span><span>Rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+'</span><span>Moving the car needs two loaders</span></div></div>';
+    if(o.k==="rail"&&cr.rail.existing)return '<div class="step rail"><div class="t">Railcar already unloading</div><div class="tm">Done at '+T(cr.rail.uEnd)+'</div><div class="meta"><span>Vent and rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+' (one loader)</span><span>Tank about '+Math.round(cr.rail.levelEnd==null?lvl:cr.rail.levelEnd)+'% when done</span></div></div>';
+    if(o.k==="rail")return '<div class="step rail"><div class="t">Railcar: rig up</div><div class="tm">'+T(cr.rail.start)+' to '+T(cr.rail.uStart)+'</div><div class="meta"><span>One loader</span><span>Unloads until '+T(cr.rail.uEnd)+', tank rises about '+Math.round(D.add)+'%</span><span>Vent and rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+'</span><span>Moving the car needs two loaders</span></div></div>';
     var x=o.x,late=x.late>0;
     return '<div class="step'+(late?" late":"")+'"><div class="t">'+esc(x.name)+'</div><div class="tm">'+T(x.start)+' to '+T(x.end)+'</div><div class="meta"><span>LBT '+T(x.lbt)+'</span>'+tb(x)+'<span>'+(late?'<b style="color:var(--bad)">Late by '+Math.round(x.late)+' min</b>':Math.round(-x.late)+' min to spare')+'</span><span>Tank '+Math.round(x.after)+'% after start</span></div></div>'
   }).join("");
@@ -235,16 +262,17 @@ function render(){
 
 function buildLoads(){
   $("loads").innerHTML=S.loads.map(function(l){return '<div class="lrow" data-id="'+l.id+'"><div class="nm"><label class="f" for="nm'+l.id+'">Load or trailer</label><input id="nm'+l.id+'" data-f="name" type="text" value="'+esc(l.name||"")+'" placeholder="Name or number"></div>'+
-   '<div><label class="f" for="tk'+l.id+'">Ticket #</label><input id="tk'+l.id+'" data-f="ticket" type="text" value="'+esc(l.ticket||"")+'" placeholder="Ticket number"></div>'+
-   '<div><label class="f" for="bl'+l.id+'">BOL #</label><input id="bl'+l.id+'" data-f="bol" type="text" value="'+esc(l.bol||"")+'" placeholder="BOL number"></div>'+
+   '<div class="nm"><label class="f" for="pr'+l.id+'">Product</label><select id="pr'+l.id+'" data-f="prod">'+PRODUCTS.map(function(p){return '<option value="'+p[0]+'"'+((l.prod||"acid")===p[0]?" selected":"")+'>'+p[1]+'</option>'}).join("")+'</select></div>'+
    '<div><label class="f" for="tm'+l.id+'">Leave by (LBT)</label><input id="tm'+l.id+'" data-f="lbt" type="time" value="'+esc(l.lbt||"")+'"></div>'+
    '<div><label class="f" for="gl'+l.id+'">Gallons</label><input id="gl'+l.id+'" data-f="gal" type="number" inputmode="decimal" min="0" step="any" value="'+esc(l.gal)+'"></div>'+
+   '<div><label class="f" for="tk'+l.id+'">Ticket #</label><input id="tk'+l.id+'" data-f="ticket" type="text" value="'+esc(l.ticket||"")+'" placeholder="Ticket number"></div>'+
+   '<div><label class="f" for="bl'+l.id+'">BOL #</label><input id="bl'+l.id+'" data-f="bol" type="text" value="'+esc(l.bol||"")+'" placeholder="BOL number"></div>'+
    '<button type="button" class="rm" data-rm="'+l.id+'" aria-label="Remove load">Remove this load</button></div>'}).join("")||'<p class="note">No loads yet. Tap Add a load.</p>';
 }
 function touch(){S.examples=false;save()}
 $("loads").oninput=function(e){var row=e.target.closest(".lrow");if(!row)return;var id=+row.getAttribute("data-id"),f=e.target.getAttribute("data-f");var l=S.loads.filter(function(x){return x.id===id})[0];if(l&&f){l[f]=e.target.value;touch();render()}};
 $("loads").onclick=function(e){var r=e.target.getAttribute("data-rm");if(r){S.loads=S.loads.filter(function(x){return x.id!==+r});touch();buildLoads();render()}};
-$("add").onclick=function(){var n=S.next++;S.loads.push({id:n,name:"",ticket:"",bol:"",lbt:"",gal:5000});touch();buildLoads();render();var el=$("nm"+n);if(el)el.focus()};
+$("add").onclick=function(){var n=S.next++;S.loads.push({id:n,name:"",ticket:"",bol:"",prod:"acid",lbt:"",gal:5000});touch();buildLoads();render();var el=$("nm"+n);if(el)el.focus()};
 $("lvl").value=S.level;
 $("lvl").oninput=function(e){S.level=e.target.value;touch();render()};
 function buildLdr(){$("ldr").innerHTML=[1,2,3,4].map(function(n){return '<button type="button" data-n="'+n+'" aria-pressed="'+(S.loaders===n)+'">'+n+'</button>'}).join("")}
@@ -252,7 +280,12 @@ $("ldr").onclick=function(e){var n=e.target.getAttribute("data-n");if(n){S.loade
 $("planbtn").onclick=function(e){var p=e.target.getAttribute("data-p");if(p){S.plan=p;save();render()}};
 $("sg").innerHTML=SET.map(function(s){return '<label for="s_'+s[0]+'">'+s[1]+'</label><input id="s_'+s[0]+'" data-k="'+s[0]+'" type="number" inputmode="decimal" step="'+s[2]+'" value="'+S.P[s[0]]+'">'}).join("");
 $("sg").oninput=function(e){var k=e.target.getAttribute("data-k"),v=parseFloat(e.target.value);if(k&&v>=0&&(v>0||k==="extra")){S.P[k]=v;touch();render()}};
-buildLdr();buildLoads();render();
+function buildRc(){$("rcbtn").innerHTML=[[false,"No"],[true,"Yes, one is running"]].map(function(x){return '<button type="button" data-r="'+x[0]+'" aria-pressed="'+(S.rc.on===x[0])+'">'+x[1]+'</button>'}).join("");$("rcin").hidden=!S.rc.on}
+$("rcbtn").onclick=function(e){var r=e.target.getAttribute("data-r");if(r!==null){S.rc.on=(r==="true");touch();buildRc();render()}};
+$("rch").value=S.rc.h;$("rcm").value=S.rc.m;
+$("rch").oninput=function(e){S.rc.h=e.target.value;touch();render()};
+$("rcm").oninput=function(e){S.rc.m=e.target.value;touch();render()};
+buildRc();buildLdr();buildLoads();render();
 setInterval(render,60000);
 if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 </script>
