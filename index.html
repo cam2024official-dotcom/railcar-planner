@@ -63,6 +63,12 @@ button[aria-pressed="true"]{background:var(--acc);border-color:var(--acc);color:
 .rec .small{font-size:14px;color:var(--mute)}
 .lrow{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end}
 .lrow .nm,.lrow .rm{grid-column:1/-1}
+.lrow.act{border:2px solid var(--acc)}
+.lrow.done{opacity:.85}
+.tm2{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.tm2 .tmr{font:700 24px/1.15 var(--display);letter-spacing:.01em;min-width:0}
+.tm2 button{flex:none;min-width:120px}
+.go{background:var(--acc);border-color:var(--acc);color:var(--accink)}
 .lrow button{min-height:48px;padding:8px 12px}
 .add{width:100%;border-style:dashed;border-color:var(--acc);background:var(--hl)}
 .plan{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
@@ -95,7 +101,7 @@ summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:
       <div id="lvlpill"></div>
     </div>
     <div>
-      <label class="f">Loaders available now</label>
+      <label class="f">Loaders on shift</label>
       <div class="chips" id="ldr"></div>
       <p class="note" id="clock"></p>
     </div>
@@ -127,7 +133,7 @@ summary{font-weight:700;cursor:pointer;min-height:40px;display:flex;align-items:
     <p class="note" id="derived"></p>
     <p class="note">Railcar gallons start at a typical 19,700. For a car that differs, type its gallons from the railcar sheet. The unload time is gallons divided by the GPM. The tank size is worked out from how much a 5,000 gal load of 36% acid drops the sonar, so change that number if you see a different drop. Other products draw less in proportion to the 36% acid in them.</p>
   </details>
-  <p class="note">This tool suggests an order. It assumes every available loader is free right now. While a railcar unloads, a loader is only tied up for rig up, then for venting and rig down when it finishes. You make the call.</p>
+  <p class="note">This tool suggests an order. It assumes every loader on shift is free unless a load is running. While a railcar unloads, a loader is only tied up for rig up, then for venting and rig down when it finishes. You make the call.</p>
 </div></main>
 
 <script>
@@ -157,11 +163,12 @@ var $=function(i){return document.getElementById(i)};
 function derive(){var P=S.P;var tank=5000/(P.drop/100);var un=Math.round(P.railGal/P.gpm);return{tank:tank,add:P.railGal/tank*100,unload:un,U:un+P.up+P.vent+P.down}}
 function lbtMin(s){if(!s||s.indexOf(":")<0)return null;var p=s.split(":"),d=new Date(NOW);var t=new Date(d.getFullYear(),d.getMonth(),d.getDate(),+p[0],+p[1]).getTime();var df=(t-NOW)/60000;if(df<-60)df+=1440;return df}
 
-function sim(level0,N,loads,rs,P,D,ex){
+function sim(level0,N,loads,rs,P,D,ex,act){
   var free=[],i;for(i=0;i<N;i++)free.push(0);
   var q=loads.slice().sort(function(a,b){return a.lbt-b.lbt});
   var level=level0,res=[],rail={started:false,start:null,uStart:null,uEnd:null,end:null,downDone:false,existing:false,levelEnd:null},minL=level0,maxL=level0;
   if(ex){rail.started=true;rail.existing=true;rail.start=0;rail.uStart=0;rail.uEnd=ex.rem;rail.end=ex.rem+P.vent+P.down}
+  var ai=0;(act||[]).forEach(function(a){if(ai<N){free[ai]=a.rem;ai++}res.push({id:a.id,name:a.name,ticket:a.ticket,bol:a.bol,prod:a.prod,gal:a.gal||0,lbt:a.lbt,start:a.start,end:a.rem,after:level0,late:a.rem-a.lbt,active:true})});
   for(var t=0;t<=2880;t++){
     if(rs!=null&&!rail.started&&t>=rs){for(i=0;i<N;i++){if(free[i]<=t){rail.started=true;rail.start=t;rail.uStart=t+P.up;rail.uEnd=t+P.up+D.unload;rail.end=rail.uEnd+P.vent+P.down;free[i]=t+P.up;break}}}
     if(rail.started&&t>rail.uStart&&t<=rail.uEnd)level+=D.add/D.unload;
@@ -177,7 +184,7 @@ function sim(level0,N,loads,rs,P,D,ex){
   }
   return{res:res,rail:rail,blocked:q,minL:minL,maxL:maxL,over:maxL>P.fill+0.01}
 }
-function problems(r){var o=[];r.res.forEach(function(x){if(x.late>0)o.push(x.name)});r.blocked.forEach(function(x){o.push(x.name)});return o}
+function problems(r){var o=[];r.res.forEach(function(x){if(x.late>0&&!x.active)o.push(x.name)});r.blocked.forEach(function(x){o.push(x.name)});return o}
 function score(r){return problems(r).length+(r.over?1:0)}
 function list(a){return a.join(", ")}
 
@@ -192,11 +199,13 @@ function render(){
   else lp.innerHTML='<span class="pill ok">Above '+P.due+'%</span>';
   $("derived").textContent="Tank is about "+Math.round(D.tank).toLocaleString("en-US")+" gal at 100%. This railcar unloads in about "+dur(D.unload)+", plus rig up and rig down, and adds about "+Math.round(D.add)+"% to the sonar.";
 
-  var arr=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal);if(m!=null&&g>0)arr.push({id:l.id,name:l.name||("Load "+(i+1)),ticket:l.ticket||"",bol:l.bol||"",prod:l.prod||"acid",lbt:m,gal:g})});
+  var arr=[],act=[];S.loads.forEach(function(l,i){var m=lbtMin(l.lbt),g=parseFloat(l.gal),o={id:l.id,name:l.name||("Load "+(i+1)),ticket:l.ticket||"",bol:l.bol||"",prod:l.prod||"acid",lbt:m,gal:g};
+    if(l.startAt){if(!l.endAt&&m!=null){var el=(NOW-l.startAt)/60000;o.start=-Math.round(el);o.rem=Math.max(0,Math.round(P.loadMin-el));act.push(o)}return}
+    if(m!=null&&g>0)arr.push(o)});
   var N=S.loaders;
   var rc=S.rc||{on:false,h:0,m:0},ex=rc.on?{rem:Math.round(Math.max(0,rc.endAt?(rc.endAt-NOW)/60000:(parseFloat(rc.h)||0)*60+(parseFloat(rc.m)||0)))}:null;
   var rl=$("rcleft");rl.hidden=!ex;if(ex)rl.textContent=ex.rem>0?"Counting down: "+dur(ex.rem)+" left, done at "+T(ex.rem)+".":"Timer is at zero. Unloading should be done.";
-  var run=function(rs){return sim(lvl,N,arr,rs,P,D,ex)};
+  var run=function(rs){return sim(lvl,N,arr,rs,P,D,ex,act)};
   var base=run(null),bs=score(base),oks=[],best={rs:null,sc:bs,r:base};
   for(var rs=0;rs<=600&&!ex;rs+=5){var r=run(rs);if(!r.rail.started)continue;var sc=score(r),ast=r.rail.start;if(sc===0&&oks.indexOf(ast)<0)oks.push(ast);if(sc<best.sc)best={rs:ast,sc:sc,r:r}}
   var now0=run(0),low=lvl<P.due,h="",tone="",L=[];
@@ -241,6 +250,8 @@ function render(){
   else{if(oks.length&&low)chosen=oks[0];else if(bs>0&&best.rs!=null)chosen=best.rs;else chosen=null}
   if(ex)chosen=null;
   cr=run(chosen);
+  var al=act.filter(function(a){return a.rem>a.lbt}).map(function(a){return a.name});
+  if(al.length){tone="bad";L=L.map(function(x){return x.replace(" Every load still makes its LBT.","").replace("Every load makes its LBT.","")}).filter(function(x){return x});L.unshift(list(al)+" will leave late at its current pace.")}
   L.push('<span class="small">Estimated lowest tank level on this plan: '+Math.round(cr.minL)+'%. Loading stops at '+P.stop+'%.</span>');
   var rc=$("rec");rc.className="rec "+tone;rc.innerHTML="<h3>"+esc(h)+"</h3>"+L.map(function(x){return "<p>"+(x.indexOf("<span")===0?x:esc(x))+"</p>"}).join("");
 
@@ -256,6 +267,7 @@ function render(){
     if(o.k==="rail"&&cr.rail.existing)return '<div class="step rail"><div class="t">Railcar already unloading</div><div class="tm">Done at '+T(cr.rail.uEnd)+'</div><div class="meta"><span>Vent and rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+' (one loader)</span><span>Tank about '+Math.round(cr.rail.levelEnd==null?lvl:cr.rail.levelEnd)+'% when done</span></div></div>';
     if(o.k==="rail")return '<div class="step rail"><div class="t">Railcar: rig up</div><div class="tm">'+T(cr.rail.start)+' to '+T(cr.rail.uStart)+'</div><div class="meta"><span>One loader</span><span>Unloads until '+T(cr.rail.uEnd)+', tank rises about '+Math.round(D.add)+'%</span><span>Vent and rig down '+T(cr.rail.uEnd)+' to '+T(cr.rail.end)+'</span><span>Moving the car needs two loaders</span></div></div>';
     var x=o.x,late=x.late>0;
+    if(x.active)return '<div class="step'+(late?" late":"")+'"><div class="t">'+esc(x.name)+' (loading now)</div><div class="tm">Started '+T(x.start)+', done about '+T(x.end)+'</div><div class="meta"><span>LBT '+T(x.lbt)+'</span>'+tb(x)+'<span>'+(late?'<b style="color:var(--bad)">Late by '+Math.round(x.late)+' min</b>':Math.round(-x.late)+' min to spare')+'</span></div></div>';
     return '<div class="step'+(late?" late":"")+'"><div class="t">'+esc(x.name)+'</div><div class="tm">'+T(x.start)+' to '+T(x.end)+'</div><div class="meta"><span>LBT '+T(x.lbt)+'</span>'+tb(x)+'<span>'+(late?'<b style="color:var(--bad)">Late by '+Math.round(x.late)+' min</b>':Math.round(-x.late)+' min to spare')+'</span><span>Tank '+Math.round(x.after)+'% after start</span></div></div>'
   }).join("");
   cr.blocked.forEach(function(x){html+='<div class="step late"><div class="t">'+esc(x.name)+'</div><div class="meta"><span><b style="color:var(--bad)">Cannot start. Tank would drop below '+P.stop+'%.</b></span><span>LBT '+T(x.lbt)+'</span>'+tb(x)+'</div></div>'});
@@ -263,17 +275,36 @@ function render(){
 }
 
 function buildLoads(){
-  $("loads").innerHTML=S.loads.map(function(l){return '<div class="lrow" data-id="'+l.id+'"><div class="nm"><label class="f" for="nm'+l.id+'">Load or trailer</label><input id="nm'+l.id+'" data-f="name" type="text" value="'+esc(l.name||"")+'" placeholder="Name or number"></div>'+
+  $("loads").innerHTML=S.loads.map(function(l){return '<div class="lrow'+(l.endAt?" done":l.startAt?" act":"")+'" data-id="'+l.id+'"><div class="nm"><label class="f" for="nm'+l.id+'">Load or trailer</label><input id="nm'+l.id+'" data-f="name" type="text" value="'+esc(l.name||"")+'" placeholder="Name or number"></div>'+
+   '<div class="nm tm2"><span class="tmr" data-id="'+l.id+'"></span>'+(l.endAt?'<button type="button" data-act="undo" data-id="'+l.id+'">Undo</button>':l.startAt?'<button type="button" class="go" data-act="end" data-id="'+l.id+'">End load</button>':'<button type="button" class="go" data-act="start" data-id="'+l.id+'">Start load</button>')+'</div>'+
    '<div class="nm"><label class="f" for="pr'+l.id+'">Product</label><select id="pr'+l.id+'" data-f="prod">'+PRODUCTS.map(function(p){return '<option value="'+p[0]+'"'+((l.prod||"acid")===p[0]?" selected":"")+'>'+p[1]+'</option>'}).join("")+'</select></div>'+
    '<div><label class="f" for="tm'+l.id+'">Leave by (LBT)</label><input id="tm'+l.id+'" data-f="lbt" type="time" value="'+esc(l.lbt||"")+'"></div>'+
    '<div><label class="f" for="gl'+l.id+'">Gallons</label><input id="gl'+l.id+'" data-f="gal" type="number" inputmode="decimal" min="0" step="any" value="'+esc(l.gal)+'"></div>'+
    '<div><label class="f" for="tk'+l.id+'">Ticket #</label><input id="tk'+l.id+'" data-f="ticket" type="text" value="'+esc(l.ticket||"")+'" placeholder="Ticket number"></div>'+
    '<div><label class="f" for="bl'+l.id+'">BOL #</label><input id="bl'+l.id+'" data-f="bol" type="text" value="'+esc(l.bol||"")+'" placeholder="BOL number"></div>'+
    '<button type="button" class="rm" data-rm="'+l.id+'" aria-label="Remove load">Remove this load</button></div>'}).join("")||'<p class="note">No loads yet. Tap Add a load.</p>';
+  tick();
+}
+function fmtHMS(ms){var s=Math.max(0,Math.floor(ms/1000)),h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h+":"+pad(m)+":"+pad(s%60)}
+function hm(ms){var m=Math.round(ms/60000),h=Math.floor(m/60);return (h?h+" h ":"")+(m%60)+" min"}
+function tick(){
+  S.loads.forEach(function(l){
+    var el=document.querySelector('.tmr[data-id="'+l.id+'"]');if(!el)return;
+    if(l.endAt){var d=l.endAt-l.startAt,df=Math.round((S.P.loadMin*60000-d)/60000);el.textContent="Took "+hm(d)+(Math.abs(df)>=1?(df>0?", "+df+" min under plan":", "+(-df)+" min over plan"):", on plan")}
+    else if(l.startAt)el.textContent="Loading: "+fmtHMS(Date.now()-l.startAt);
+    else el.textContent="Not started";
+  });
 }
 function touch(){S.examples=false;save()}
 $("loads").oninput=function(e){var row=e.target.closest(".lrow");if(!row)return;var id=+row.getAttribute("data-id"),f=e.target.getAttribute("data-f");var l=S.loads.filter(function(x){return x.id===id})[0];if(l&&f){l[f]=e.target.value;touch();render()}};
-$("loads").onclick=function(e){var r=e.target.getAttribute("data-rm");if(r){S.loads=S.loads.filter(function(x){return x.id!==+r});touch();buildLoads();render()}};
+$("loads").onclick=function(e){
+  var r=e.target.getAttribute("data-rm");
+  if(r){S.loads=S.loads.filter(function(x){return x.id!==+r});touch();buildLoads();render();return}
+  var a=e.target.getAttribute("data-act");
+  if(a){var id=+e.target.getAttribute("data-id"),l=S.loads.filter(function(x){return x.id===id})[0];
+    if(l){if(a==="start"){l.startAt=Date.now();l.endAt=null}else if(a==="end"){l.endAt=Date.now()}else{l.startAt=null;l.endAt=null}
+      touch();buildLoads();render()}}
+};
 $("add").onclick=function(){var n=S.next++;S.loads.push({id:n,name:"",ticket:"",bol:"",prod:"acid",lbt:"",gal:5000});touch();buildLoads();render();var el=$("nm"+n);if(el)el.focus()};
 $("lvl").value=S.level;
 $("lvl").oninput=function(e){S.level=e.target.value;touch();render()};
@@ -290,6 +321,7 @@ $("rch").oninput=function(e){S.rc.h=e.target.value;setEnd();touch();render()};
 $("rcm").oninput=function(e){S.rc.m=e.target.value;setEnd();touch();render()};
 buildRc();buildLdr();buildLoads();render();
 setInterval(render,60000);
+setInterval(tick,1000);
 if("serviceWorker" in navigator){window.addEventListener("load",function(){navigator.serviceWorker.register("sw.js").catch(function(){})})}
 </script>
 </body>
